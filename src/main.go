@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"helloworld/model"
 	"log"
 	"net/http"
 
@@ -22,13 +23,6 @@ const (
 // Hello is contain Name GLOBAL VALUE JAA IF PRIVATE IS name
 type Hello struct {
 	Name string `json:"name"`
-}
-
-// User model
-type User struct {
-	UID      int    `db:"uid"`
-	Username string `json:"username" db:"username"`
-	Password string `json:"password" db:"password"`
 }
 
 // UserRepo ที่เกี่ยวกับดาต้าเบส
@@ -76,7 +70,7 @@ func helloNameHandler(context *gin.Context) {
 
 //registerHandler มี method ของ UserRepo
 func (userRepo UserRepo) registerHandler(context *gin.Context) {
-	var user User
+	var user model.User
 	err := context.ShouldBindJSON(&user)
 	if err != nil {
 		context.JSON(http.StatusBadRequest, gin.H{
@@ -84,13 +78,19 @@ func (userRepo UserRepo) registerHandler(context *gin.Context) {
 		})
 		return
 	}
+	if err := createUser(user, userRepo.DBConnection); err != nil {
+		context.AbortWithStatus(http.StatusInternalServerError)
+	}
+	context.Status(http.StatusCreated)
+}
+
+func createUser(user model.User, DBConnection *sqlx.DB) error {
 	statement := `INSERT INTO user (username, password) VALUES (?,?)`
-	tx := userRepo.DBConnection.MustBegin()
+	tx := DBConnection.MustBegin()
 	tx.MustExec(statement, user.Username, user.Password)
 	if err := tx.Commit(); err != nil {
 		log.Println(err)
-		return
+		return err
 	}
-
-	context.AbortWithStatus(http.StatusCreated)
+	return nil
 }
