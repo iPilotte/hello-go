@@ -24,31 +24,34 @@ type Hello struct {
 	Name string `json:"name"`
 }
 
-// Register model
-type Register struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 // User model
 type User struct {
-	UID      string `db:"uid"`
-	Username string `db:"username"`
-	Password string `db:"password"`
+	UID      int    `db:"uid"`
+	Username string `json:"username" db:"username"`
+	Password string `json:"password" db:"password"`
+}
+
+// UserRepo ที่เกี่ยวกับดาต้าเบส
+type UserRepo struct {
+	DBConnection *sqlx.DB
 }
 
 func main() {
-	urlSql := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", username, password, host, port, database)
-	_, err := sqlx.Connect("mysql", urlSql)
+	urlSQL := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", username, password, host, port, database)
+	db, err := sqlx.Connect("mysql", urlSQL)
 	if err != nil {
 		log.Println(err)
 		log.Fatal("Can not Connet Database")
 	}
+	userRepo := UserRepo{
+		DBConnection: db,
+	}
+
 	//route
 	route := gin.Default()
-	route.GET("/hello", helloworldHandler)     //END POINT JAA
-	route.POST("/helloname", helloNameHandler) //END POINT JAA
-	route.POST("/register", registerHandler)   //END POINT JAA
+	route.GET("/hello", helloworldHandler)            //END POINT JAA
+	route.POST("/helloname", helloNameHandler)        //END POINT JAA
+	route.POST("/register", userRepo.registerHandler) //END POINT JAA
 	route.Run(":3000")
 }
 
@@ -71,15 +74,23 @@ func helloNameHandler(context *gin.Context) {
 	context.JSON(http.StatusOK, helloName)
 }
 
-func registerHandler(context *gin.Context) {
-	var helloName Hello
-	err := context.ShouldBindJSON(&helloName)
+//registerHandler มี method ของ UserRepo
+func (userRepo UserRepo) registerHandler(context *gin.Context) {
+	var user User
+	err := context.ShouldBindJSON(&user)
 	if err != nil {
 		context.JSON(http.StatusBadRequest, gin.H{
 			"message": "input incorrect",
 		})
 		return
 	}
-	helloName.Name = "hello " + helloName.Name
-	context.JSON(http.StatusOK, helloName)
+	statement := `INSERT INTO user (username, password) VALUES (?,?)`
+	tx := userRepo.DBConnection.MustBegin()
+	tx.MustExec(statement, user.Username, user.Password)
+	if err := tx.Commit(); err != nil {
+		log.Println(err)
+		return
+	}
+
+	context.AbortWithStatus(http.StatusCreated)
 }
